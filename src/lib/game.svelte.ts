@@ -24,7 +24,7 @@ export type EpisodeResult = {
 	moves: number;
 	terminalValue: number;
 	durationMs: number;
-	/** Secret-portal runs are for fun only and never reach the leaderboard. */
+	/** True when the episode ended through the secret portal. */
 	viaPortal?: boolean;
 };
 
@@ -145,7 +145,7 @@ export class GameSession {
 	readonly exploredPct = $derived((this.revealed.size / TOTAL_FLOOR_CELLS) * 100);
 
 	readonly bestReward = $derived.by(() => {
-		const mine = this.history.filter((e) => e.difficulty === this.difficulty && !e.viaPortal);
+		const mine = this.history.filter((e) => e.difficulty === this.difficulty);
 		return mine.length ? Math.max(...mine.map((e) => e.totalReward)) : null;
 	});
 

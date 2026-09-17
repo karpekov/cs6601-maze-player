@@ -97,7 +97,7 @@
 					<li>
 						<span class="mono num">#{episode.episodeNumber}</span>
 						<span class="badge {episode.outcome}">
-							{episode.viaPortal ? '🌀' : episode.outcome === 'goal' ? '🏆' : '☠'}
+							{episode.outcome === 'goal' ? '🏆' : '☠'}
 						</span>
 						<span class="mono moves">{episode.moves} mv</span>
 						<span

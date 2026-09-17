@@ -79,10 +79,6 @@
 		savedEpisodes = finished.length;
 
 		const result = finished[finished.length - 1];
-		if (result.viaPortal) {
-			saveState = 'idle';
-			return;
-		}
 
 		if (!isFirebaseConfigured) {
 			saveState = 'disabled';

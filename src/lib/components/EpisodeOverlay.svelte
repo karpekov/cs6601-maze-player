@@ -29,8 +29,7 @@
 		</h2>
 		<p class="sub">
 			{#if result.viaPortal}
-				Bang on a wall long enough and the maze gives up. No exploring, no risk — and no place
-				on the leaderboard.
+				Bang on a wall long enough and the maze gives up. The score still counts.
 			{:else if won}
 				{result.moves} moves through an unmapped maze and you walked out rich.
 			{:else}
@@ -63,10 +62,8 @@
 			Next episode <kbd>↵</kbd>
 		</button>
 
-		<p class="save {saveState}" class:portal={result.viaPortal}>
-			{#if result.viaPortal}
-				🌀 Portal run — kept off the record
-			{:else if saveState === 'saving'}
+		<p class="save {saveState}">
+			{#if saveState === 'saving'}
 				Saving your score…
 			{:else if saveState === 'saved'}
 				✓ Saved to the leaderboard
@@ -181,10 +178,6 @@
 	.save.error,
 	.save.disabled {
 		color: var(--amber);
-	}
-
-	.save.portal {
-		color: var(--violet);
 	}
 
 	@keyframes spin {

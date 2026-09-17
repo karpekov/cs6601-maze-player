@@ -33,7 +33,7 @@ into a wall leaves you in place and still costs a point.
 Bang into the wall immediately **left** of the start cell five times in a row
 and it tears open, warping you straight onto the treasure. Stepping off the
 start cell, or any move that isn't a bump to the left, resets the count. Portal runs show their own
-end-of-episode card, never reach Firestore, and don't count toward "your best".
+end-of-episode card and count on the leaderboard like any other run.
 
 </details>
 
@@ -61,6 +61,8 @@ The `cs3600-maze-explorer` Firebase project and its web app already exist, and
 - `episodes` — one document per finished episode (`playerName`, `difficulty`,
   `outcome`, `totalReward`, `moves`, `terminalValue`, `exploredCells`,
   `durationMs`, `episodeNumber`, `endedAt`)
+- `settings/app` — optional `scoresResetAt` cutoff so the dashboard can start a
+  fresh scoring window without deleting anything
 
 Security rules live in [`firestore.rules`](firestore.rules): the data is
 append-only and world-readable, with no player login. Deploy them with
@@ -76,7 +78,11 @@ just visit `/admin` — the page is not gated. Easy and Medium leaderboards sit
 side by side, each above its own summary stats (episodes, players, goal rate,
 average reward and moves, fewest moves to the treasure); Hard expands below on
 demand. Each leaderboard ranks a player's best single episode, breaking ties by
-fewest moves.
+fewest moves. Portal runs count the same as any other episode. The page refreshes itself every
+second while it is open and highlights players who join, climb, or drop; the
+news chips only call out top-3 changes. A tiny menu in the top bar resets the
+scoring window (password `delete`); older Firestore rows are left in place and
+simply ignored.
 
 ## Deploying to Vercel
 

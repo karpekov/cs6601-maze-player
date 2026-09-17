@@ -1,36 +1,258 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { isFirebaseConfigured } from '$lib/firebase';
-	import { DIFFICULTIES, type Difficulty } from '$lib/game.svelte';
+	import { DIFFICULTIES, DIFFICULTY_ORDER, type Difficulty } from '$lib/game.svelte';
 	import {
 		leaderboardFor,
 		statsFor,
 		type DifficultyStats,
 		type LeaderboardRow
 	} from '$lib/leaderboard';
-	import { fetchEpisodes, fetchPlayers, type StoredEpisode, type StoredPlayer } from '$lib/stats';
+	import {
+		fetchEpisodes,
+		fetchPlayers,
+		fetchScoresResetAt,
+		resetScores,
+		type StoredEpisode,
+		type StoredPlayer
+	} from '$lib/stats';
+
+	const RESET_PASSWORD = 'delete';
+	const POLL_MS = 1_000;
+	const FLASH_MS = 3200;
+	const PODIUM = 3;
+	const FEED_MAX = 4;
+
+	type FlashKind = 'join' | 'up' | 'down' | 'score';
+	type RowFlash = { kind: FlashKind; delta: number };
+	type LiveEvent = { id: number; kind: FlashKind; text: string };
+	type RankSnap = Map<string, { rank: number; bestReward: number; name: string }>;
+	type Boards = Record<Difficulty, LeaderboardRow[]>;
+	type FlashMap = Record<string, RowFlash>;
+
+	const flashKey = (difficulty: Difficulty, name: string) =>
+		`${difficulty}:${name.trim().toLowerCase()}`;
 
 	let episodes = $state<StoredEpisode[]>([]);
 	let players = $state<StoredPlayer[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
+	let scoresResetAt = $state<Date | null>(null);
+	let resetPassword = $state('');
+	let resetState = $state<'idle' | 'working' | 'wrong' | 'done'>('idle');
+	let live = $state(true);
+	let boardRows = $state.raw<Boards>({ easy: [], medium: [], hard: [] });
+	let flashes = $state<FlashMap>({});
+	let feed = $state<LiveEvent[]>([]);
+	let bumped = $state<Record<string, boolean>>({});
+	let viewRows = $derived.by(() => {
+		const active = flashes;
+		const out = { easy: [], medium: [], hard: [] } as Record<
+			Difficulty,
+			(LeaderboardRow & { flash?: RowFlash })[]
+		>;
+		for (const difficulty of DIFFICULTY_ORDER) {
+			out[difficulty] = boardRows[difficulty].map((row) => ({
+				...row,
+				flash: active[flashKey(difficulty, row.playerName)]
+			}));
+		}
+		return out;
+	});
 
-	onMount(load);
+	let primed = false;
+	let inFlight = false;
+	let eventSeq = 0;
+	let clearFlashes: ReturnType<typeof setTimeout> | null = null;
 
-	async function load() {
+	onMount(() => {
+		void load();
+
+		const tick = () => {
+			if (document.visibilityState !== 'visible') return;
+			if (resetState === 'working') return;
+			void load(true);
+		};
+		const poll = setInterval(tick, POLL_MS);
+		const onVis = () => {
+			live = document.visibilityState === 'visible';
+			if (live) void load(true);
+		};
+		document.addEventListener('visibilitychange', onVis);
+
+		return () => {
+			clearInterval(poll);
+			document.removeEventListener('visibilitychange', onVis);
+			if (clearFlashes) clearTimeout(clearFlashes);
+		};
+	});
+
+	async function load(silent = false) {
 		if (!isFirebaseConfigured) {
 			error = 'Firestore is not configured, so there is nothing to show yet.';
 			return;
 		}
+		if (inFlight) return;
+		inFlight = true;
+		if (!silent) loading = true;
+		if (!silent) error = null;
 
-		loading = true;
-		error = null;
 		try {
-			[episodes, players] = await Promise.all([fetchEpisodes(), fetchPlayers()]);
+			const since = await fetchScoresResetAt();
+			const [nextEpisodes, nextPlayers] = await Promise.all([
+				fetchEpisodes(1000, since),
+				fetchPlayers(500, since)
+			]);
+			const incoming = primed ? announce(episodes, nextEpisodes) : {};
+			paint(nextEpisodes);
+			if (Object.keys(incoming).length) lightUp(incoming);
+			episodes = nextEpisodes;
+			players = nextPlayers;
+			scoresResetAt = since;
+			primed = true;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load stats.';
+			if (!silent) error = e instanceof Error ? e.message : 'Failed to load stats.';
 		} finally {
+			inFlight = false;
 			loading = false;
+		}
+	}
+
+	function snapshot(list: StoredEpisode[]): Record<Difficulty, RankSnap> {
+		const out = {} as Record<Difficulty, RankSnap>;
+		for (const difficulty of DIFFICULTY_ORDER) {
+			out[difficulty] = new Map(
+				leaderboardFor(list, difficulty).map((row, rank) => [
+					row.playerName.toLowerCase(),
+					{ rank, bestReward: row.bestReward, name: row.playerName }
+				])
+			);
+		}
+		return out;
+	}
+
+	function announce(prevList: StoredEpisode[], nextList: StoredEpisode[]): FlashMap {
+		const prev = snapshot(prevList);
+		const next = snapshot(nextList);
+		const incoming: FlashMap = {};
+		const events: LiveEvent[] = [];
+
+		for (const difficulty of DIFFICULTY_ORDER) {
+			const label = DIFFICULTIES[difficulty].label;
+			for (const [key, row] of next[difficulty]) {
+				const before = prev[difficulty].get(key);
+				const id = flashKey(difficulty, row.name);
+				if (!before) {
+					incoming[id] = { kind: 'join', delta: 0 };
+					if (row.rank < PODIUM) {
+						events.push(makeEvent('join', `${row.name} took ${place(row.rank)} on ${label}`));
+					}
+				} else if (row.rank < before.rank) {
+					const delta = before.rank - row.rank;
+					incoming[id] = { kind: 'up', delta };
+					if (row.rank < PODIUM) {
+						events.push(makeEvent('up', `${row.name} climbed to ${place(row.rank)} on ${label}`));
+					}
+				} else if (row.rank > before.rank) {
+					const delta = row.rank - before.rank;
+					incoming[id] = { kind: 'down', delta };
+					if (before.rank < PODIUM) {
+						events.push(
+							makeEvent(
+								'down',
+								row.rank < PODIUM
+									? `${row.name} dropped to ${place(row.rank)} on ${label}`
+									: `${row.name} dropped out of the top 3 on ${label}`
+							)
+						);
+					}
+				} else if (row.bestReward !== before.bestReward) {
+					incoming[id] = { kind: 'score', delta: 0 };
+				}
+			}
+		}
+
+		if (events.length) pushFeed(events);
+
+		const prevPlayers = new Set(prevList.map((e) => e.playerNameLower)).size;
+		const nextPlayers = new Set(nextList.map((e) => e.playerNameLower)).size;
+		const prevGoals = prevList.filter((e) => e.outcome === 'goal').length;
+		const nextGoals = nextList.filter((e) => e.outcome === 'goal').length;
+		const prevBest = prevList.length ? Math.max(...prevList.map((e) => e.totalReward)) : null;
+		const nextBest = nextList.length ? Math.max(...nextList.map((e) => e.totalReward)) : null;
+		bumpKpi({
+			players: nextPlayers !== prevPlayers,
+			episodes: nextList.length !== prevList.length,
+			goals: nextGoals !== prevGoals,
+			best: nextBest !== prevBest
+		});
+
+		return incoming;
+	}
+
+	function paint(list: StoredEpisode[]) {
+		const next: Boards = { easy: [], medium: [], hard: [] };
+		for (const difficulty of DIFFICULTY_ORDER) {
+			next[difficulty] = leaderboardFor(list, difficulty);
+		}
+		boardRows = next;
+	}
+
+	function lightUp(incoming: FlashMap) {
+		flashes = incoming;
+		if (clearFlashes) clearTimeout(clearFlashes);
+		clearFlashes = setTimeout(() => {
+			flashes = {};
+			clearFlashes = null;
+		}, FLASH_MS);
+	}
+
+	function makeEvent(kind: FlashKind, text: string): LiveEvent {
+		return { id: ++eventSeq, kind, text };
+	}
+
+	function pushFeed(events: LiveEvent[]) {
+		if (!events.length) return;
+		feed = [...events, ...feed].slice(0, FEED_MAX);
+	}
+
+	function bumpKpi(next: Record<string, boolean>) {
+		const on: Record<string, boolean> = {};
+		for (const [key, hit] of Object.entries(next)) if (hit) on[key] = true;
+		if (!Object.keys(on).length) return;
+		bumped = { ...bumped, ...on };
+		setTimeout(() => {
+			const copy = { ...bumped };
+			for (const key of Object.keys(on)) delete copy[key];
+			bumped = copy;
+		}, 700);
+	}
+
+	async function resetLeaderboard(event: SubmitEvent) {
+		event.preventDefault();
+		if (resetPassword !== RESET_PASSWORD) {
+			resetState = 'wrong';
+			return;
+		}
+		if (!isFirebaseConfigured) {
+			error = 'Firestore is not configured, so there is nothing to reset.';
+			return;
+		}
+
+		resetState = 'working';
+		try {
+			await resetScores();
+			resetPassword = '';
+			episodes = [];
+			players = [];
+			paint([]);
+			flashes = {};
+			scoresResetAt = new Date();
+			resetState = 'done';
+			await load();
+		} catch (e) {
+			resetState = 'idle';
+			error = e instanceof Error ? e.message : 'Failed to reset scores.';
 		}
 	}
 
@@ -40,12 +262,19 @@
 		goals: episodes.filter((e) => e.outcome === 'goal').length,
 		best: episodes.length ? Math.max(...episodes.map((e) => e.totalReward)) : null
 	});
-	let hardRows = $derived<LeaderboardRow[]>(leaderboardFor(episodes, 'hard'));
 
 	const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 	const when = (date: Date | null) =>
-		date ? date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+		date
+			? date.toLocaleString(undefined, {
+					month: 'short',
+					day: 'numeric',
+					hour: '2-digit',
+					minute: '2-digit'
+				})
+			: '—';
 	const medal = (i: number) => ['🥇', '🥈', '🥉'][i] ?? `${i + 1}`;
+	const place = (rank: number) => ['1st', '2nd', '3rd'][rank] ?? `${rank + 1}th`;
 </script>
 
 <div class="shell">
@@ -55,35 +284,71 @@
 			<h1>Maze Explorer stats</h1>
 		</div>
 		<div class="actions">
+			<span class="live" class:paused={!live} title={live ? 'Refreshing every second' : 'Paused while this tab is hidden'}>
+				<span class="dot"></span>
+				{live ? 'Live' : 'Paused'}
+			</span>
 			<a class="btn" href="/">← Back to the maze</a>
-			<button class="btn" onclick={load} disabled={loading}>
+			<button class="btn" onclick={() => load()} disabled={loading}>
 				{loading ? 'Loading…' : 'Refresh'}
 			</button>
+			<details class="reset-menu">
+				<summary title="Reset scores">···</summary>
+				<div class="reset-panel panel">
+					<form class="reset-form" onsubmit={resetLeaderboard}>
+						<input
+							class="input"
+							type="password"
+							placeholder="Password"
+							autocomplete="off"
+							bind:value={resetPassword}
+							disabled={resetState === 'working'}
+						/>
+						<button class="btn danger-btn" type="submit" disabled={resetState === 'working' || !resetPassword}>
+							{resetState === 'working' ? '…' : 'Reset'}
+						</button>
+					</form>
+					{#if scoresResetAt}
+						<p class="since mono">since {when(scoresResetAt)}</p>
+					{/if}
+					{#if resetState === 'wrong'}
+						<p class="reset-msg">Wrong password.</p>
+					{:else if resetState === 'done'}
+						<p class="reset-msg ok">Cleared.</p>
+					{/if}
+				</div>
+			</details>
 		</div>
 	</header>
+
+	<ul class="feed" aria-live="polite">
+		{#each feed as event (event.id)}
+			<li class={event.kind}>{event.text}</li>
+		{/each}
+	</ul>
 
 	{#if error}
 		<p class="error panel pad">{error}</p>
 	{/if}
 
 	<section class="totals">
-		<div class="kpi panel">
+		<div class="kpi panel" class:bump={bumped.players}>
 			<span class="k">Players</span>
 			<span class="v mono">{totals.players}</span>
 			<span class="sub">{players.length} registered</span>
 		</div>
-		<div class="kpi panel">
+		<div class="kpi panel" class:bump={bumped.episodes}>
 			<span class="k">Episodes</span>
 			<span class="v mono">{totals.episodes}</span>
 		</div>
-		<div class="kpi panel">
+		<div class="kpi panel" class:bump={bumped.goals}>
 			<span class="k">Treasure found</span>
 			<span class="v mono">{totals.goals}</span>
 			<span class="sub">
 				{totals.episodes ? ((totals.goals / totals.episodes) * 100).toFixed(1) : '0'}% of episodes
 			</span>
 		</div>
-		<div class="kpi panel">
+		<div class="kpi panel" class:bump={bumped.best}>
 			<span class="k">Best episode</span>
 			<span class="v mono" class:positive={(totals.best ?? 0) > 0}>
 				{totals.best === null ? '—' : fmt(totals.best)}
@@ -100,7 +365,52 @@
 					<span class="tagline">{DIFFICULTIES[difficulty].tagline}</span>
 				</div>
 				{@render summaryStats(s)}
-				{@render leaderboardTable(difficulty)}
+				{#if viewRows[difficulty].length === 0}
+					<p class="empty">No episodes recorded yet.</p>
+				{:else}
+					<table>
+						<thead>
+							<tr>
+								<th class="rank">#</th>
+								<th>Player</th>
+								<th class="num">Best</th>
+								<th class="num">Moves</th>
+								<th class="num">Eps</th>
+								<th class="num">Goals</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each viewRows[difficulty] as row, i (`${row.playerName}:${row.flash?.kind ?? ''}`)}
+								<tr
+									class:join={row.flash?.kind === 'join'}
+									class:up={row.flash?.kind === 'up'}
+									class:down={row.flash?.kind === 'down'}
+									class:score={row.flash?.kind === 'score'}
+								>
+									<td class="rank">
+										{medal(i)}
+										{#if row.flash?.kind === 'up' && row.flash.delta}
+											<span class="delta up">↑{row.flash.delta}</span>
+										{:else if row.flash?.kind === 'down' && row.flash.delta}
+											<span class="delta down">↓{row.flash.delta}</span>
+										{:else if row.flash?.kind === 'join'}
+											<span class="delta join">new</span>
+										{/if}
+									</td>
+									<td class="player" title="Last played {when(row.lastPlayed)}">{row.playerName}</td>
+									<td
+										class="num mono"
+										class:positive={row.bestReward > 0}
+										class:negative={row.bestReward < 0}>{fmt(row.bestReward)}</td
+									>
+									<td class="num mono">{row.moves}</td>
+									<td class="num mono">{row.episodes}</td>
+									<td class="num mono">{row.goals}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
 			</div>
 		{/each}
 	</section>
@@ -110,14 +420,59 @@
 			<h2>Hard</h2>
 			<span class="tagline">{DIFFICULTIES.hard.tagline}</span>
 			<span class="count">
-				{hardRows.length
-					? `${hardRows.length} ${hardRows.length === 1 ? 'player' : 'players'}`
+				{viewRows.hard.length
+					? `${viewRows.hard.length} ${viewRows.hard.length === 1 ? 'player' : 'players'}`
 					: 'no episodes yet'}
 			</span>
 		</summary>
 		<div class="hard-body">
 			{@render summaryStats(statsFor(episodes, 'hard'))}
-			{@render leaderboardTable('hard')}
+			{#if viewRows.hard.length === 0}
+				<p class="empty">No episodes recorded yet.</p>
+			{:else}
+				<table>
+					<thead>
+						<tr>
+							<th class="rank">#</th>
+							<th>Player</th>
+							<th class="num">Best</th>
+							<th class="num">Moves</th>
+							<th class="num">Eps</th>
+							<th class="num">Goals</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each viewRows.hard as row, i (`${row.playerName}:${row.flash?.kind ?? ''}`)}
+							<tr
+								class:join={row.flash?.kind === 'join'}
+								class:up={row.flash?.kind === 'up'}
+								class:down={row.flash?.kind === 'down'}
+								class:score={row.flash?.kind === 'score'}
+							>
+								<td class="rank">
+									{medal(i)}
+									{#if row.flash?.kind === 'up' && row.flash.delta}
+										<span class="delta up">↑{row.flash.delta}</span>
+									{:else if row.flash?.kind === 'down' && row.flash.delta}
+										<span class="delta down">↓{row.flash.delta}</span>
+									{:else if row.flash?.kind === 'join'}
+										<span class="delta join">new</span>
+									{/if}
+								</td>
+								<td class="player" title="Last played {when(row.lastPlayed)}">{row.playerName}</td>
+								<td
+									class="num mono"
+									class:positive={row.bestReward > 0}
+									class:negative={row.bestReward < 0}>{fmt(row.bestReward)}</td
+								>
+								<td class="num mono">{row.moves}</td>
+								<td class="num mono">{row.episodes}</td>
+								<td class="num mono">{row.goals}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{/if}
 		</div>
 	</details>
 </div>
@@ -139,42 +494,6 @@
 			<span class="k">Min to goal</span><span class="mono">{s.fewestMovesToGoal ?? '—'}</span>
 		</div>
 	</div>
-{/snippet}
-
-{#snippet leaderboardTable(difficulty: Difficulty)}
-	{@const rows = leaderboardFor(episodes, difficulty)}
-	{#if rows.length === 0}
-		<p class="empty">No episodes recorded yet.</p>
-	{:else}
-		<table>
-			<thead>
-				<tr>
-					<th class="rank">#</th>
-					<th>Player</th>
-					<th class="num">Best</th>
-					<th class="num">Moves</th>
-					<th class="num">Eps</th>
-					<th class="num">Goals</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each rows as row, i (row.playerName + i)}
-					<tr>
-						<td class="rank">{medal(i)}</td>
-						<td class="player" title="Last played {when(row.lastPlayed)}">{row.playerName}</td>
-						<td
-							class="num mono"
-							class:positive={row.bestReward > 0}
-							class:negative={row.bestReward < 0}>{fmt(row.bestReward)}</td
-						>
-						<td class="num mono">{row.moves}</td>
-						<td class="num mono">{row.episodes}</td>
-						<td class="num mono">{row.goals}</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	{/if}
 {/snippet}
 
 <style>
@@ -214,7 +533,161 @@
 	.actions {
 		margin-left: auto;
 		display: flex;
+		align-items: center;
 		gap: 0.5rem;
+	}
+
+	.reset-menu {
+		position: relative;
+	}
+
+	.reset-menu > summary {
+		list-style: none;
+		cursor: pointer;
+		padding: 0.15rem 0.35rem;
+		font-size: 0.7rem;
+		letter-spacing: 0.18em;
+		color: color-mix(in srgb, var(--muted) 55%, transparent);
+		user-select: none;
+	}
+
+	.reset-menu > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.reset-menu > summary:hover,
+	.reset-menu[open] > summary {
+		color: var(--muted);
+	}
+
+	.reset-panel {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 0.35rem);
+		z-index: 8;
+		width: 15.5rem;
+		padding: 0.7rem 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		box-shadow: 0 12px 32px -18px rgba(20, 24, 40, 0.45);
+	}
+
+	.reset-form {
+		display: flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+
+	.input {
+		width: 8.5rem;
+		padding: 0.32rem 0.5rem;
+		border-radius: 8px;
+		border: 1px solid var(--border);
+		background: var(--paper);
+		font: inherit;
+		font-size: 0.78rem;
+	}
+
+	.input:focus {
+		outline: none;
+		border-color: var(--red);
+	}
+
+	.btn.danger-btn {
+		padding: 0.32rem 0.55rem;
+		font-size: 0.72rem;
+		background: transparent;
+		border-color: rgba(220, 53, 69, 0.35);
+		color: var(--red);
+	}
+
+	.since {
+		margin: 0;
+		font-size: 0.68rem;
+		color: var(--muted);
+	}
+
+	.reset-msg {
+		margin: 0;
+		font-size: 0.72rem;
+		color: var(--red);
+	}
+
+	.reset-msg.ok {
+		color: var(--green);
+	}
+
+	.live {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-right: 0.35rem;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--green);
+	}
+
+	.live.paused {
+		color: var(--muted);
+	}
+
+	.live .dot {
+		width: 0.55rem;
+		height: 0.55rem;
+		border-radius: 50%;
+		background: currentColor;
+		box-shadow: 0 0 0 0 currentColor;
+		animation: live-pulse 1.8s ease-out infinite;
+	}
+
+	.live.paused .dot {
+		animation: none;
+		opacity: 0.45;
+	}
+
+	.feed {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: 0.4rem;
+		min-height: 2.15rem;
+		overflow: hidden;
+	}
+
+	.feed li {
+		flex: 0 0 auto;
+		padding: 0.32rem 0.7rem;
+		border-radius: 999px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		white-space: nowrap;
+		animation: chip-in 0.35s ease-out;
+	}
+
+	.feed li.join {
+		color: var(--violet);
+		background: rgba(109, 77, 242, 0.12);
+	}
+
+	.feed li.up {
+		color: var(--green);
+		background: rgba(15, 157, 88, 0.12);
+	}
+
+	.feed li.down {
+		color: var(--amber);
+		background: rgba(226, 118, 27, 0.12);
+	}
+
+	.feed li.score {
+		color: var(--gold);
+		background: rgba(201, 138, 0, 0.14);
 	}
 
 	.btn {
@@ -241,6 +714,10 @@
 
 	.kpi {
 		padding: 0.9rem 1rem;
+	}
+
+	.kpi.bump .v {
+		animation: kpi-pop 0.55s ease;
 	}
 
 	.k {
@@ -359,6 +836,29 @@
 		font-size: 0.62rem;
 	}
 
+	@keyframes live-pulse {
+		0% {
+			box-shadow: 0 0 0 0 rgba(15, 157, 88, 0.55);
+		}
+		100% {
+			box-shadow: 0 0 0 8px rgba(15, 157, 88, 0);
+		}
+	}
+
+	@keyframes chip-in {
+		from {
+			opacity: 0;
+			transform: translateY(-6px) scale(0.92);
+		}
+	}
+
+	@keyframes kpi-pop {
+		50% {
+			transform: scale(1.12);
+			color: var(--violet);
+		}
+	}
+
 	table {
 		width: 100%;
 		border-collapse: collapse;
@@ -385,6 +885,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		font-weight: 600;
 	}
 
 	tbody tr:hover {
@@ -395,18 +896,101 @@
 		text-align: right;
 	}
 
+
 	.rank {
-		width: 2.4rem;
+		width: 4.2rem;
+		white-space: nowrap;
 	}
 
-	.player {
-		font-weight: 600;
+	.delta {
+		display: inline-block;
+		margin-left: 0.2rem;
+		font-size: 0.68rem;
+		font-weight: 800;
+		animation: delta-pop 0.45s ease;
+	}
+
+	.delta.up {
+		color: var(--green);
+	}
+
+	.delta.down {
+		color: var(--amber);
+	}
+
+	.delta.join {
+		color: var(--violet);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+
+	tbody tr.join {
+		animation: row-join 0.7s ease;
+		background: rgba(109, 77, 242, 0.1);
+	}
+
+	tbody tr.up {
+		animation: row-up 0.85s ease;
+		background: rgba(15, 157, 88, 0.1);
+	}
+
+	tbody tr.down {
+		animation: row-down 0.85s ease;
+		background: rgba(226, 118, 27, 0.1);
+	}
+
+	tbody tr.score {
+		animation: row-score 0.85s ease;
+		background: rgba(201, 138, 0, 0.1);
 	}
 
 	.empty {
 		margin: 0;
 		font-size: 0.88rem;
 		color: var(--muted);
+	}
+
+	@keyframes delta-pop {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+	}
+
+	@keyframes row-join {
+		from {
+			opacity: 0;
+			transform: translateX(-10px);
+			background: rgba(109, 77, 242, 0.18);
+		}
+	}
+
+	@keyframes row-up {
+		0% {
+			transform: translateY(8px);
+			background: rgba(15, 157, 88, 0.22);
+		}
+		100% {
+			transform: none;
+			background: transparent;
+		}
+	}
+
+	@keyframes row-down {
+		0% {
+			transform: translateY(-8px);
+			background: rgba(226, 118, 27, 0.2);
+		}
+		100% {
+			transform: none;
+			background: transparent;
+		}
+	}
+
+	@keyframes row-score {
+		40% {
+			background: rgba(201, 138, 0, 0.22);
+		}
 	}
 
 	@media (max-width: 820px) {

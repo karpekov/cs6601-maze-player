@@ -10,7 +10,8 @@ import {
 	query,
 	serverTimestamp,
 	setDoc,
-	Timestamp
+	Timestamp,
+	where
 } from 'firebase/firestore';
 import { getDb } from './firebase';
 import type { Difficulty, EpisodeResult, Outcome } from './game.svelte';
@@ -28,6 +29,7 @@ export type StoredEpisode = {
 	episodeNumber: number;
 	exploredCells: number;
 	endedAt: Date | null;
+	viaPortal: boolean;
 };
 
 export type StoredPlayer = {
@@ -108,18 +110,47 @@ export async function saveEpisode(
 			durationMs: params.durationMs,
 			episodeNumber: params.episodeNumber,
 			exploredCells: params.exploredCells,
-			endedAt: serverTimestamp()
+			endedAt: serverTimestamp(),
+			...(params.viaPortal ? { viaPortal: true } : {})
 		})
 	);
 }
 
-export async function fetchEpisodes(max = 1000): Promise<StoredEpisode[]> {
+const SETTINGS_REF = 'settings';
+const APP_SETTINGS_ID = 'app';
+
+/** Cutoff after an instructor reset. Older episodes stay in Firestore but drop off the board. */
+export async function fetchScoresResetAt(): Promise<Date | null> {
+	const db = getDb();
+	if (!db) return null;
+
+	const snap = await withTimeout(getDoc(doc(db, SETTINGS_REF, APP_SETTINGS_ID)));
+	if (!snap.exists()) return null;
+	return toDate(snap.data().scoresResetAt);
+}
+
+/** Start a fresh leaderboard without deleting any stored episodes or players. */
+export async function resetScores(): Promise<void> {
+	const db = getDb();
+	if (!db) throw new Error('Firestore is not configured');
+
+	await withTimeout(
+		setDoc(
+			doc(db, SETTINGS_REF, APP_SETTINGS_ID),
+			{ scoresResetAt: serverTimestamp() },
+			{ merge: true }
+		)
+	);
+}
+
+export async function fetchEpisodes(max = 1000, since: Date | null = null): Promise<StoredEpisode[]> {
 	const db = getDb();
 	if (!db) return [];
 
-	const snap = await withTimeout(
-		getDocs(query(collection(db, 'episodes'), orderBy('endedAt', 'desc'), limit(max)))
-	);
+	const clauses = [orderBy('endedAt', 'desc'), limit(max)];
+	if (since) clauses.unshift(where('endedAt', '>=', Timestamp.fromDate(since)));
+
+	const snap = await withTimeout(getDocs(query(collection(db, 'episodes'), ...clauses)));
 
 	return snap.docs.map((d) => {
 		const data = d.data();
@@ -135,18 +166,20 @@ export async function fetchEpisodes(max = 1000): Promise<StoredEpisode[]> {
 			durationMs: Number(data.durationMs ?? 0),
 			episodeNumber: Number(data.episodeNumber ?? 0),
 			exploredCells: Number(data.exploredCells ?? 0),
-			endedAt: toDate(data.endedAt)
+			endedAt: toDate(data.endedAt),
+			viaPortal: Boolean(data.viaPortal)
 		};
 	});
 }
 
-export async function fetchPlayers(max = 500): Promise<StoredPlayer[]> {
+export async function fetchPlayers(max = 500, since: Date | null = null): Promise<StoredPlayer[]> {
 	const db = getDb();
 	if (!db) return [];
 
-	const snap = await withTimeout(
-		getDocs(query(collection(db, 'players'), orderBy('lastSeenAt', 'desc'), limit(max)))
-	);
+	const clauses = [orderBy('lastSeenAt', 'desc'), limit(max)];
+	if (since) clauses.unshift(where('lastSeenAt', '>=', Timestamp.fromDate(since)));
+
+	const snap = await withTimeout(getDocs(query(collection(db, 'players'), ...clauses)));
 
 	return snap.docs.map((d) => {
 		const data = d.data();
