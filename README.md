@@ -78,11 +78,14 @@ just visit `/admin` — the page is not gated. Easy and Medium leaderboards sit
 side by side, each above its own summary stats (episodes, players, goal rate,
 average reward and moves, fewest moves to the treasure); Hard expands below on
 demand. Each leaderboard ranks a player's best single episode, breaking ties by
-fewest moves. Portal runs count the same as any other episode. The page refreshes itself every
-second while it is open and highlights players who join, climb, or drop; the
-news chips only call out top-3 changes. A tiny menu in the top bar resets the
-scoring window (password `delete`); older Firestore rows are left in place and
-simply ignored.
+fewest moves. Portal runs count the same as any other episode. The board loads
+once when you open `/admin` and stays still until you press **Go Live**, which
+refreshes every second while that tab is visible and turns itself off after 30
+minutes. **Stop live**, closing the tab, or the 30-minute cutoff ends the
+polling so an idle dashboard does not keep reading Firestore. Click **Go Live**
+again to resume. Highlights and news chips only run while live; they call out
+top-3 changes. A tiny menu in the top bar resets the scoring window (password
+`delete`); older Firestore rows are left in place and simply ignored.
 
 ## Deploying to Vercel
 

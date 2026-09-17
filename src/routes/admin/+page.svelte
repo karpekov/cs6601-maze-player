@@ -19,6 +19,7 @@
 
 	const RESET_PASSWORD = 'delete';
 	const POLL_MS = 1_000;
+	const LIVE_MS = 30 * 60_000;
 	const FLASH_MS = 3200;
 	const PODIUM = 3;
 	const FEED_MAX = 4;
@@ -40,7 +41,7 @@
 	let scoresResetAt = $state<Date | null>(null);
 	let resetPassword = $state('');
 	let resetState = $state<'idle' | 'working' | 'wrong' | 'done'>('idle');
-	let live = $state(true);
+	let live = $state(false);
 	let boardRows = $state.raw<Boards>({ easy: [], medium: [], hard: [] });
 	let flashes = $state<FlashMap>({});
 	let feed = $state<LiveEvent[]>([]);
@@ -64,28 +65,48 @@
 	let inFlight = false;
 	let eventSeq = 0;
 	let clearFlashes: ReturnType<typeof setTimeout> | null = null;
+	let poll: ReturnType<typeof setInterval> | null = null;
+	let liveCutoff: ReturnType<typeof setTimeout> | null = null;
 
 	onMount(() => {
 		void load();
 
-		const tick = () => {
-			if (document.visibilityState !== 'visible') return;
-			if (resetState === 'working') return;
-			void load(true);
-		};
-		const poll = setInterval(tick, POLL_MS);
 		const onVis = () => {
-			live = document.visibilityState === 'visible';
-			if (live) void load(true);
+			if (!live) return;
+			if (document.visibilityState === 'visible') void load(true);
 		};
 		document.addEventListener('visibilitychange', onVis);
 
 		return () => {
-			clearInterval(poll);
+			stopLive();
 			document.removeEventListener('visibilitychange', onVis);
 			if (clearFlashes) clearTimeout(clearFlashes);
 		};
 	});
+
+	function startLive() {
+		if (live) return;
+		live = true;
+		void load(true);
+		poll = setInterval(() => {
+			if (document.visibilityState !== 'visible') return;
+			if (resetState === 'working') return;
+			void load(true);
+		}, POLL_MS);
+		liveCutoff = setTimeout(stopLive, LIVE_MS);
+	}
+
+	function stopLive() {
+		live = false;
+		if (poll) {
+			clearInterval(poll);
+			poll = null;
+		}
+		if (liveCutoff) {
+			clearTimeout(liveCutoff);
+			liveCutoff = null;
+		}
+	}
 
 	async function load(silent = false) {
 		if (!isFirebaseConfigured) {
@@ -284,10 +305,16 @@
 			<h1>Maze Explorer stats</h1>
 		</div>
 		<div class="actions">
-			<span class="live" class:paused={!live} title={live ? 'Refreshing every second' : 'Paused while this tab is hidden'}>
+			<button
+				class="btn live-btn"
+				class:on={live}
+				class:btn-primary={!live}
+				onclick={() => (live ? stopLive() : startLive())}
+				title={live ? 'Stops automatically after 30 minutes' : 'Refresh every second while this tab is visible'}
+			>
 				<span class="dot"></span>
-				{live ? 'Live' : 'Paused'}
-			</span>
+				{live ? 'Stop live' : 'Go Live'}
+			</button>
 			<a class="btn" href="/">← Back to the maze</a>
 			<button class="btn" onclick={() => load()} disabled={loading}>
 				{loading ? 'Loading…' : 'Refresh'}
@@ -618,34 +645,24 @@
 		color: var(--green);
 	}
 
-	.live {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		margin-right: 0.35rem;
-		font-size: 0.7rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--green);
-	}
-
-	.live.paused {
-		color: var(--muted);
-	}
-
-	.live .dot {
+	.live-btn .dot {
 		width: 0.55rem;
 		height: 0.55rem;
 		border-radius: 50%;
 		background: currentColor;
-		box-shadow: 0 0 0 0 currentColor;
-		animation: live-pulse 1.8s ease-out infinite;
+		opacity: 0.45;
 	}
 
-	.live.paused .dot {
-		animation: none;
-		opacity: 0.45;
+	.live-btn.on {
+		color: var(--green);
+		border-color: rgba(15, 157, 88, 0.4);
+		background: rgba(15, 157, 88, 0.08);
+	}
+
+	.live-btn.on .dot {
+		opacity: 1;
+		box-shadow: 0 0 0 0 currentColor;
+		animation: live-pulse 1.8s ease-out infinite;
 	}
 
 	.feed {
