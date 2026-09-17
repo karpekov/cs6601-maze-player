@@ -1,0 +1,30 @@
+rules_version = '2';
+
+// No player login: the app writes with the public web key, so records are
+// append-only and nothing already written can be edited or deleted.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.name is string
+                            && request.resource.data.name.size() <= 32;
+      allow delete: if false;
+    }
+
+    match /episodes/{episodeId} {
+      allow read: if true;
+      allow create: if request.resource.data.playerName is string
+                    && request.resource.data.playerName.size() <= 32
+                    && request.resource.data.difficulty in ['easy', 'medium', 'hard']
+                    && request.resource.data.outcome in ['goal', 'trap']
+                    && request.resource.data.totalReward is number
+                    && request.resource.data.moves is int;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

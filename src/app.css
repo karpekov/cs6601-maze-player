@@ -1,0 +1,139 @@
+:root {
+	color-scheme: light only;
+
+	--bg: #f7f8fc;
+	--paper: #ffffff;
+	--panel: rgba(255, 255, 255, 0.86);
+	--border: rgba(28, 38, 71, 0.12);
+	--surface: rgba(28, 38, 71, 0.04);
+	--surface-strong: rgba(28, 38, 71, 0.08);
+	--text: #1b2134;
+	--muted: #6a7189;
+	--shadow: 0 18px 40px -26px rgba(28, 38, 71, 0.45);
+
+	--gold: #c98a00;
+	--amber: #e2761b;
+	--green: #0f9d58;
+	--red: #dc3545;
+	--violet: #6d4df2;
+	--cyan: #0e87b8;
+	--stone: #47507a;
+
+	--font: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+	--mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+}
+
+body {
+	background:
+		radial-gradient(1100px 700px at 12% -10%, rgba(109, 77, 242, 0.1), transparent 60%),
+		radial-gradient(900px 600px at 100% 0%, rgba(14, 135, 184, 0.09), transparent 55%),
+		radial-gradient(800px 800px at 50% 110%, rgba(226, 118, 27, 0.1), transparent 60%),
+		var(--bg);
+	color: var(--text);
+	font-family: var(--font);
+}
+
+h1,
+h2,
+h3 {
+	margin: 0;
+	letter-spacing: -0.02em;
+}
+
+button {
+	font: inherit;
+	cursor: pointer;
+	border: none;
+	background: none;
+	color: inherit;
+}
+
+a {
+	color: var(--cyan);
+}
+
+.panel {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 18px;
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(8px);
+}
+
+.mono {
+	font-family: var(--mono);
+	font-variant-numeric: tabular-nums;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.7rem 1.2rem;
+	border-radius: 12px;
+	font-weight: 600;
+	background: var(--paper);
+	border: 1px solid var(--border);
+	box-shadow: 0 1px 2px rgba(28, 38, 71, 0.08);
+	transition:
+		transform 0.12s ease,
+		background 0.2s ease,
+		box-shadow 0.2s ease;
+}
+
+.btn:hover {
+	background: #fbfbfe;
+	transform: translateY(-1px);
+	box-shadow: 0 6px 16px -8px rgba(28, 38, 71, 0.4);
+}
+
+.btn:active {
+	transform: translateY(1px);
+}
+
+.btn-primary {
+	background: linear-gradient(135deg, #ffc247, var(--amber));
+	color: #40260a;
+	border-color: rgba(226, 118, 27, 0.5);
+	box-shadow: 0 12px 26px -14px rgba(226, 118, 27, 0.9);
+}
+
+.btn-primary:hover {
+	background: linear-gradient(135deg, #ffcd63, #ee8630);
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
+}
+
+kbd {
+	font-family: var(--mono);
+	font-size: 0.75rem;
+	padding: 0.15rem 0.4rem;
+	border-radius: 6px;
+	background: var(--paper);
+	border: 1px solid var(--border);
+	border-bottom-width: 2px;
+	color: var(--muted);
+}
+
+.positive {
+	color: var(--green);
+}
+
+.negative {
+	color: var(--red);
+}
