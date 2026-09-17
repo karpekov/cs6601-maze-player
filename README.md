@@ -37,6 +37,24 @@ end-of-episode card and count on the leaderboard like any other run.
 
 </details>
 
+## Play on a phone
+
+The site is meant to be playable in a class on a phone as well as a laptop.
+
+**Landing.** Easy, Medium, and Hard stack as equal-width cards so the long
+Hard copy does not squeeze the others. The name field stays at 16px and does
+not auto-focus, which keeps iOS from zooming the page. The About block
+(problem, class, credit) sits below the form.
+
+**In the maze.** The view is locked to the screen — no scrolling. A single top
+bar holds the difficulty toggle (equal Easy / Medium / Hard buttons) and
+**Leave maze**. Under that is a one-row stats strip (episode, moves, reward,
+best, explored) and a short last-move line; the legend and past-episode log
+are hidden. The grid uses almost all leftover space. The D-pad sits at the
+bottom and grows on taller phones when there is room. Buttons are large enough
+that a double tap is two moves, not a zoom. Keyboard hints are hidden; move
+with the D-pad.
+
 ## Run it locally
 
 Requires Node 20.19+, 22.12+, or 24 (see `.nvmrc`; the Svelte toolchain rejects
@@ -50,6 +68,8 @@ npm run dev
 ```
 
 The game is playable without Firestore — it just tells you scores aren't saved.
+Dashboard passwords for this machine live in `.passwords` (gitignored). `.vscode`
+is gitignored as well.
 
 ## Firestore
 
@@ -79,13 +99,20 @@ side by side, each above its own summary stats (episodes, players, goal rate,
 average reward and moves, fewest moves to the treasure); Hard expands below on
 demand. Each leaderboard ranks a player's best single episode, breaking ties by
 fewest moves. Portal runs count the same as any other episode. The board loads
-once when you open `/admin` and stays still until you press **Go Live**, which
-refreshes every second while that tab is visible and turns itself off after 30
-minutes. **Stop live**, closing the tab, or the 30-minute cutoff ends the
-polling so an idle dashboard does not keep reading Firestore. Click **Go Live**
-again to resume. Highlights and news chips only run while live; they call out
-top-3 changes. A tiny menu in the top bar resets the scoring window (password
-`delete`); older Firestore rows are left in place and simply ignored.
+once when you open `/admin` and stays still until you press **Go Live**
+(password `golive`), which refreshes every second while that tab is visible and
+turns itself off after 30 minutes. **Stop live** needs no password. Closing the
+tab or the 30-minute cutoff also ends the polling so an idle dashboard does not
+keep reading Firestore. Click **Go Live** again to resume. Highlights and news
+chips only run while live; they call out top-3 changes. A tiny menu in the top
+bar resets the scoring window (password `delete`); older Firestore rows are left
+in place and simply ignored.
+
+On a phone the dashboard stacks: compact title, wrapping action buttons (**Go
+Live**, **Maze**, **Refresh**), a 2×2 stats strip, then Easy, Medium, and Hard
+boards one under another. Password fields stay at 16px and do not auto-focus, so
+iOS does not zoom the page. Leaderboard tables scroll sideways if a name is
+long.
 
 ## Deploying to Vercel
 

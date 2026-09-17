@@ -112,10 +112,10 @@
 		</div>
 	{:else}
 		<header class="topbar panel">
-			<div class="brand">
-				<span class="dot"></span>
-				Maze Explorer
-			</div>
+		<div class="brand">
+			<span class="dot"></span>
+			<span class="brand-name">Maze Explorer</span>
+		</div>
 
 			<div class="mode">
 				<span class="mode-label">Difficulty</span>
@@ -157,26 +157,30 @@
 			</aside>
 
 			<section class="stage">
-				<MazeBoard
-					cells={session.cells}
-					row={session.row}
-					col={session.col}
-					status={session.status}
-					lastMove={session.lastMove}
-					moves={session.moves}
-					portal={session.portalPhase}
-				/>
+				<div class="board-wrap">
+					<MazeBoard
+						cells={session.cells}
+						row={session.row}
+						col={session.col}
+						status={session.status}
+						lastMove={session.lastMove}
+						moves={session.moves}
+						portal={session.portalPhase}
+					/>
 
-				{#if !session.playing && lastResult}
-					<EpisodeOverlay result={lastResult} {saveState} onnext={nextEpisode} />
-				{/if}
+					{#if !session.playing && lastResult}
+						<EpisodeOverlay result={lastResult} {saveState} onnext={nextEpisode} />
+					{/if}
+				</div>
 
 				<div class="controls">
 					<div class="dpad">
 						{#each directions as direction (direction)}
 							<button
+								type="button"
 								class="btn pad {direction}"
 								onclick={() => step(direction)}
+								oncontextmenu={(event) => event.preventDefault()}
 								disabled={!session.playing}
 								aria-label={direction}
 							>
@@ -197,7 +201,10 @@
 <style>
 	.shell {
 		min-height: 100vh;
+		min-height: 100dvh;
 		padding: clamp(1rem, 3vw, 2rem);
+		padding-left: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-left));
+		padding-right: max(clamp(1rem, 3vw, 2rem), env(safe-area-inset-right));
 		display: flex;
 		flex-direction: column;
 		gap: 1.2rem;
@@ -206,7 +213,7 @@
 	.center {
 		flex: 1;
 		display: grid;
-		place-items: center;
+		place-items: safe center;
 		padding: 2rem 0;
 	}
 
@@ -368,6 +375,13 @@
 		gap: 0.9rem;
 	}
 
+	.board-wrap {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 100%;
+	}
+
 	.controls {
 		display: flex;
 		flex-direction: column;
@@ -381,13 +395,21 @@
 			'. up .'
 			'left down right';
 		gap: 0.35rem;
+		user-select: none;
+		-webkit-user-select: none;
+		-webkit-touch-callout: none;
 	}
 
 	.pad {
 		width: 2.8rem;
 		height: 2.4rem;
+		min-width: 48px;
+		min-height: 48px;
 		padding: 0;
 		font-size: 1.1rem;
+		touch-action: manipulation;
+		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	.pad.up {
@@ -415,24 +437,137 @@
 	}
 
 	@media (max-width: 900px) {
+		.shell:has(.game) {
+			height: 100dvh;
+			height: 100svh;
+			max-height: 100dvh;
+			overflow: hidden;
+			overscroll-behavior: none;
+			padding: max(0.2rem, env(safe-area-inset-top)) max(0.3rem, env(safe-area-inset-right))
+				max(0.2rem, env(safe-area-inset-bottom)) max(0.3rem, env(safe-area-inset-left));
+			gap: 0.25rem;
+		}
+
+		.center {
+			padding: 1rem 0;
+			width: 100%;
+			min-width: 0;
+		}
+
+		.shell:not(:has(.game)) {
+			padding: max(0.85rem, env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right))
+				max(0.85rem, env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+			overflow-x: hidden;
+		}
+
 		.topbar {
-			grid-template-columns: 1fr auto;
+			display: flex;
+			align-items: center;
+			grid-template-columns: none;
+			padding: 0.25rem 0.35rem;
+			gap: 0.4rem;
+			border-radius: 12px;
+		}
+
+		.brand {
+			flex: none;
+			gap: 0.35rem;
+			font-size: 0.8rem;
+		}
+
+		.brand-name {
+			display: none;
 		}
 
 		.mode {
-			grid-column: 1 / -1;
-			grid-row: 2;
-			justify-content: start;
+			display: block;
+			flex: 1;
+			min-width: 0;
+			grid-template-columns: none;
+			justify-content: stretch;
+		}
+
+		.mode-label,
+		.mode-hint,
+		.name {
+			display: none;
+		}
+
+		.who {
+			flex: none;
+		}
+
+		.leave {
+			padding: 0.35rem 0.55rem;
+			min-height: 2.3rem;
+			font-size: 0.75rem;
 		}
 
 		.game {
+			flex: 1;
+			min-height: 0;
 			flex-direction: column;
-			align-items: center;
+			align-items: stretch;
+			gap: 0.25rem;
 		}
 
 		.side {
-			width: min(440px, 100%);
-			order: 2;
+			width: 100%;
+			order: 0;
+			padding: 0.3rem 0.35rem;
+			border-radius: 12px;
+			gap: 0;
+		}
+
+		.block {
+			display: none;
+		}
+
+		.stage {
+			order: 1;
+			flex: 1;
+			min-height: 0;
+			width: 100%;
+			gap: 0.3rem;
+			align-items: stretch;
+		}
+
+		.board-wrap {
+			flex: 2.2 1 0;
+			min-height: 0;
+			container-type: size;
+		}
+
+		.controls {
+			flex: 1 0 6.75rem;
+			min-height: 6.75rem;
+			width: 100%;
+			padding-bottom: 0.1rem;
+			gap: 0;
+			container-type: size;
+			justify-content: center;
+		}
+
+		.dpad {
+			gap: clamp(0.35rem, 5cqb, 0.7rem);
+		}
+
+		.pad {
+			width: clamp(3.35rem, min(20cqi, 38cqb), 5.85rem);
+			height: clamp(3.35rem, min(20cqi, 38cqb), 5.85rem);
+			min-width: 48px;
+			min-height: 48px;
+			font-size: clamp(1.2rem, 9cqb, 1.9rem);
+		}
+
+		.keys {
+			display: none;
+		}
+	}
+
+	@media (max-width: 900px) and (pointer: coarse) {
+		.pad:active {
+			transform: scale(0.94);
 		}
 	}
 </style>

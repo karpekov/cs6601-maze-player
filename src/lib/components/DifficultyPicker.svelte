@@ -33,7 +33,7 @@
 <style>
 	.picker {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: 0.6rem;
 	}
 
@@ -50,11 +50,6 @@
 			border-color 0.2s ease,
 			background 0.2s ease,
 			transform 0.12s ease;
-	}
-
-	.option:hover {
-		transform: translateY(-2px);
-		background: #fbfbfe;
 	}
 
 	.label {
@@ -76,14 +71,19 @@
 	}
 
 	.compact {
+		width: 100%;
 		gap: 0.35rem;
 	}
 
 	.compact .option {
-		padding: 0.45rem 1.1rem;
+		padding: 0.4rem 0.9rem;
 		border-radius: 11px;
 		align-items: center;
-		font-size: 0.95rem;
+		justify-content: center;
+		text-align: center;
+		font-size: 0.92rem;
+		line-height: 1;
+		min-height: 2.2rem;
 	}
 
 	.compact .option.selected {
@@ -111,5 +111,36 @@
 
 	.selected .tagline {
 		color: var(--text);
+	}
+
+	@media (hover: hover) {
+		.option:hover {
+			transform: translateY(-2px);
+			background: #fbfbfe;
+		}
+	}
+
+	@media (max-width: 900px) {
+		.compact {
+			gap: 0.28rem;
+		}
+
+		.compact .option {
+			padding: 0.38rem 0.15rem;
+			min-height: 2.3rem;
+			font-size: 0.78rem;
+		}
+	}
+
+	@media (max-width: 640px) {
+		.picker:not(.compact) {
+			grid-template-columns: 1fr;
+			gap: 0.45rem;
+		}
+
+		.picker:not(.compact) .option {
+			width: 100%;
+			min-width: 0;
+		}
 	}
 </style>

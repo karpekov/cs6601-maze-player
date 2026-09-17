@@ -17,6 +17,10 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+.passwords
+
+# Editor
+.vscode/
 
 # Vite
 vite.config.js.timestamp-*

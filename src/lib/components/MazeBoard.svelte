@@ -14,6 +14,8 @@
 
 	let { cells, row, col, status, lastMove, moves, portal }: Props = $props();
 
+	const look = $derived(status === 'goal' ? 'up' : (lastMove?.actual ?? 'right'));
+
 	// Dropping the class for one frame lets the shake replay on consecutive bumps.
 	let bumping = $state(false);
 
@@ -81,7 +83,11 @@
 			class:sucked={portal === 'charging'}
 			class:warping={portal === 'travel'}
 		>
-			<span class="orb"></span>
+			<span class="orb">
+				<span class="eye {look}">
+					<span class="pupil"></span>
+				</span>
+			</span>
 		</div>
 
 		<div class="torch"></div>
@@ -90,8 +96,10 @@
 
 <style>
 	.board {
+		--pad: clamp(8px, 1.4vw, 16px);
+		--gap: 1px;
 		--cell: clamp(12px, min(3.1vw, 3.4vh), 28px);
-		padding: clamp(8px, 1.4vw, 16px);
+		padding: var(--pad);
 		overflow: hidden;
 		/* Blank graph paper: unexplored cells are simply not drawn. The line
 		   pitch matches the grid's cell + 1px gap so the two stay aligned. */
@@ -109,7 +117,7 @@
 		display: grid;
 		grid-template-rows: repeat(var(--rows), var(--cell));
 		grid-template-columns: repeat(var(--cols), var(--cell));
-		gap: 1px;
+		gap: var(--gap);
 	}
 
 	.cell {
@@ -183,6 +191,8 @@
 	}
 
 	.orb {
+		position: relative;
+		overflow: hidden;
 		width: 72%;
 		height: 72%;
 		border-radius: 50%;
@@ -193,10 +203,84 @@
 		animation: pulse 1.6s ease-in-out infinite;
 	}
 
+	.eye {
+		position: absolute;
+		width: 40%;
+		height: 40%;
+		border-radius: 50%;
+		background: #fffdf6;
+		box-shadow: inset 0 0 0 1px rgba(90, 55, 8, 0.28);
+		top: 26%;
+		left: 32%;
+		transition:
+			top 0.14s ease,
+			left 0.14s ease;
+		animation: blink 5.6s ease-in-out infinite;
+		transform-origin: 50% 55%;
+	}
+
+	.eye.up {
+		top: 12%;
+		left: 30%;
+	}
+
+	.eye.down {
+		top: 44%;
+		left: 30%;
+	}
+
+	.eye.left {
+		top: 26%;
+		left: 12%;
+	}
+
+	.eye.right {
+		top: 26%;
+		left: 48%;
+	}
+
+	.pupil {
+		position: absolute;
+		width: 52%;
+		height: 52%;
+		border-radius: 50%;
+		background: #2a2214;
+		top: 24%;
+		left: 24%;
+		transition:
+			top 0.14s ease,
+			left 0.14s ease;
+	}
+
+	.eye.up .pupil {
+		top: 6%;
+		left: 24%;
+	}
+
+	.eye.down .pupil {
+		top: 42%;
+		left: 24%;
+	}
+
+	.eye.left .pupil {
+		top: 24%;
+		left: 6%;
+	}
+
+	.eye.right .pupil {
+		top: 24%;
+		left: 42%;
+	}
+
 	.player.dead .orb {
 		background: radial-gradient(circle at 34% 30%, #ffc9c9, #e0454f 55%, #8f1d1d);
 		box-shadow: 0 0 0 1.5px rgba(122, 20, 26, 0.6);
 		animation: sink 0.5s ease-in forwards;
+	}
+
+	.player.dead .eye {
+		animation: none;
+		transform: scaleY(0.12);
 	}
 
 	.player.win .orb {
@@ -205,6 +289,11 @@
 			0 0 0 1.5px rgba(8, 92, 51, 0.6),
 			0 0 22px rgba(15, 157, 88, 0.6);
 		animation: cheer 0.6s ease-out 3;
+	}
+
+	.player.sucked .eye,
+	.player.warping .eye {
+		opacity: 0;
 	}
 
 	/* --- Secret portal ------------------------------------------------- */
@@ -393,6 +482,23 @@
 		animation: flash-green 0.7s ease-out;
 	}
 
+	@keyframes blink {
+		0%,
+		8%,
+		12%,
+		86%,
+		89%,
+		92%,
+		100% {
+			transform: scaleY(1);
+		}
+		10%,
+		87.5%,
+		90.5% {
+			transform: scaleY(0.08);
+		}
+	}
+
 	@keyframes pulse {
 		0%,
 		100% {
@@ -456,8 +562,27 @@
 		}
 	}
 
+	@media (max-width: 900px) {
+		.board {
+			--pad: 3px;
+			--cell: clamp(
+				8px,
+				min(
+					calc((100cqi - 2 * var(--pad) - (var(--cols) - 1) * var(--gap)) / var(--cols)),
+					calc((100cqb - 2 * var(--pad) - (var(--rows) - 1) * var(--gap)) / var(--rows))
+				),
+				36px
+			);
+			width: max-content;
+			max-width: 100%;
+			max-height: 100%;
+			border-radius: 10px;
+		}
+	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.orb,
+		.eye,
 		.frontier,
 		.board.bumped,
 		.ring,

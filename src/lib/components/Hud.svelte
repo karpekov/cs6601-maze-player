@@ -220,4 +220,49 @@
 	.badge {
 		font-size: 0.85rem;
 	}
+
+	@media (max-width: 900px) {
+		.hud {
+			gap: 0.2rem;
+		}
+
+		.stats {
+			grid-template-columns: repeat(5, minmax(0, 1fr));
+			gap: 0.2rem;
+		}
+
+		.stat {
+			padding: 0.12rem 0.2rem;
+			border-radius: 7px;
+			text-align: center;
+		}
+
+		.stat.wide {
+			grid-column: auto;
+		}
+
+		.k {
+			font-size: 0.5rem;
+			letter-spacing: 0.04em;
+		}
+
+		.v,
+		.wide .v {
+			margin-top: 0.02rem;
+			font-size: 0.8rem;
+		}
+
+		.last {
+			height: auto;
+			min-height: 0;
+			padding: 0.22rem 0.4rem;
+			font-size: 0.7rem;
+			line-height: 1.25;
+			border-radius: 7px;
+		}
+
+		.log {
+			display: none;
+		}
+	}
 </style>

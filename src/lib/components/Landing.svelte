@@ -18,7 +18,10 @@
 	let adminDetected = $derived(isAdminName(name));
 	let ready = $derived(name.trim().length > 0);
 
-	onMount(() => nameInput?.focus());
+	onMount(() => {
+		const fine = window.matchMedia('(hover: hover) and (min-width: 700px)').matches;
+		if (fine) nameInput?.focus();
+	});
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -49,7 +52,6 @@
 				maxlength="32"
 				autocomplete="off"
 				spellcheck="false"
-				autofocus
 			/>
 		</label>
 
@@ -78,12 +80,30 @@
 		{/if}
 	</form>
 
-	<ul class="rules">
-		<li><span class="glyph">⌨</span> Arrow keys or <kbd>WASD</kbd> to move</li>
-		<li><span class="glyph">−1</span> Every move costs one point</li>
-		<li><span class="glyph">☠</span> Traps cost 5–20 and end the episode</li>
-		<li><span class="glyph">🏆</span> The treasure is worth +1000</li>
-	</ul>
+	<section class="about">
+		<h2>About</h2>
+		<div class="about-body">
+			<section>
+				<h3>The problem</h3>
+				<p>
+					A 20×23 grid with {TOTAL_FLOOR_CELLS} rooms, eighteen traps, and one treasure worth +1000.
+					Every step costs a point. Medium and Hard make your moves slip. The map stays dark until
+					you walk it — the same exploration problem a reinforcement-learning agent has to solve.
+				</p>
+			</section>
+			<section>
+				<h3>The class</h3>
+				<p>
+					This explorer is used in CS6601 (graduate) and CS3600 (undergraduate) "Introduction to
+					Artificial Intelligence" at Georgia Tech, for the Games and Reinforcement Learning
+					lectures.
+				</p>
+			</section>
+			<p class="credit">
+				Created by <a href="https://alexkarpekov.com" target="_blank" rel="noreferrer noopener">Alexander Karpekov</a>.
+			</p>
+		</div>
+	</section>
 </div>
 
 <style>
@@ -117,7 +137,6 @@
 
 	.pitch {
 		margin: 1rem 0 0;
-		max-width: 52ch;
 		color: var(--muted);
 		line-height: 1.6;
 	}
@@ -187,33 +206,80 @@
 		background: var(--surface-strong);
 	}
 
-	.rules {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.7rem;
+	.about {
 		margin: 0;
-		padding: 0;
-		list-style: none;
+		padding-top: 0.85rem;
+		border-top: 1px solid var(--border);
 	}
 
-	.rules li {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		font-size: 0.88rem;
+	.about > h2 {
+		margin: 0 0 0.85rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
 		color: var(--muted);
 	}
 
-	.glyph {
-		display: grid;
-		place-items: center;
-		width: 2rem;
-		height: 2rem;
-		flex: none;
-		border-radius: 9px;
-		font-family: var(--mono);
-		font-size: 0.8rem;
-		background: var(--paper);
-		border: 1px solid var(--border);
+	.about-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.about-body h3 {
+		margin: 0 0 0.3rem;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--gold);
+	}
+
+	.about-body p {
+		margin: 0;
+		font-size: 0.88rem;
+		line-height: 1.55;
+		color: var(--muted);
+	}
+
+	.credit a {
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.credit a:hover {
+		text-decoration: underline;
+	}
+
+	@media (max-width: 640px) {
+		.landing {
+			width: 100%;
+			gap: 1.15rem;
+		}
+
+		h1 {
+			font-size: clamp(2rem, 10vw, 2.55rem);
+		}
+
+		.pitch {
+			margin-top: 0.7rem;
+			font-size: 0.95rem;
+			line-height: 1.5;
+		}
+
+		.card {
+			padding: 1rem;
+			gap: 0.9rem;
+		}
+
+		.input {
+			font-size: 16px;
+		}
+
+		.enter {
+			min-height: 2.75rem;
+			font-size: 1rem;
+		}
 	}
 </style>

@@ -18,6 +18,7 @@
 	} from '$lib/stats';
 
 	const RESET_PASSWORD = 'delete';
+	const LIVE_PASSWORD = 'golive';
 	const POLL_MS = 1_000;
 	const LIVE_MS = 30 * 60_000;
 	const FLASH_MS = 3200;
@@ -42,6 +43,9 @@
 	let resetPassword = $state('');
 	let resetState = $state<'idle' | 'working' | 'wrong' | 'done'>('idle');
 	let live = $state(false);
+	let livePassword = $state('');
+	let liveWrong = $state(false);
+	let livePasswordEl: HTMLInputElement | undefined;
 	let boardRows = $state.raw<Boards>({ easy: [], medium: [], hard: [] });
 	let flashes = $state<FlashMap>({});
 	let feed = $state<LiveEvent[]>([]);
@@ -87,6 +91,8 @@
 	function startLive() {
 		if (live) return;
 		live = true;
+		livePassword = '';
+		liveWrong = false;
 		void load(true);
 		poll = setInterval(() => {
 			if (document.visibilityState !== 'visible') return;
@@ -94,6 +100,27 @@
 			void load(true);
 		}, POLL_MS);
 		liveCutoff = setTimeout(stopLive, LIVE_MS);
+	}
+
+	function tryStartLive(event: SubmitEvent) {
+		event.preventDefault();
+		if (livePassword !== LIVE_PASSWORD) {
+			liveWrong = true;
+			return;
+		}
+		startLive();
+	}
+
+	function onLivePromptToggle(event: Event) {
+		const open = (event.currentTarget as HTMLDetailsElement).open;
+		if (open) {
+			liveWrong = false;
+			const fine = window.matchMedia('(hover: hover) and (min-width: 700px)').matches;
+			if (fine) queueMicrotask(() => livePasswordEl?.focus());
+			return;
+		}
+		liveWrong = false;
+		livePassword = '';
 	}
 
 	function stopLive() {
@@ -305,17 +332,48 @@
 			<h1>Maze Explorer stats</h1>
 		</div>
 		<div class="actions">
-			<button
-				class="btn live-btn"
-				class:on={live}
-				class:btn-primary={!live}
-				onclick={() => (live ? stopLive() : startLive())}
-				title={live ? 'Stops automatically after 30 minutes' : 'Refresh every second while this tab is visible'}
-			>
-				<span class="dot"></span>
-				{live ? 'Stop live' : 'Go Live'}
-			</button>
-			<a class="btn" href="/">← Back to the maze</a>
+			{#if live}
+				<button
+					class="btn live-btn on"
+					onclick={stopLive}
+					title="Stops automatically after 30 minutes"
+				>
+					<span class="dot"></span>
+					Stop live
+				</button>
+			{:else}
+				<details class="live-menu" ontoggle={onLivePromptToggle}>
+					<summary
+						class="btn live-btn btn-primary"
+						title="Refresh every second while this tab is visible"
+					>
+						<span class="dot"></span>
+						Go Live
+					</summary>
+					<div class="live-panel panel">
+						<form class="live-form" onsubmit={tryStartLive}>
+							<input
+								class="input"
+								type="password"
+								placeholder="Password"
+								autocomplete="off"
+								bind:this={livePasswordEl}
+								bind:value={livePassword}
+							/>
+							<button class="btn btn-primary live-start" type="submit" disabled={!livePassword}>
+								Start
+							</button>
+						</form>
+						{#if liveWrong}
+							<p class="reset-msg">Wrong password.</p>
+						{/if}
+					</div>
+				</details>
+			{/if}
+			<a class="btn back" href="/">
+				<span class="back-long">← Back to the maze</span>
+				<span class="back-short">← Maze</span>
+			</a>
 			<button class="btn" onclick={() => load()} disabled={loading}>
 				{loading ? 'Loading…' : 'Refresh'}
 			</button>
@@ -643,6 +701,44 @@
 
 	.reset-msg.ok {
 		color: var(--green);
+	}
+
+	.live-menu {
+		position: relative;
+	}
+
+	.live-menu > summary {
+		list-style: none;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.live-menu > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.live-panel {
+		position: absolute;
+		left: 0;
+		top: calc(100% + 0.35rem);
+		z-index: 8;
+		width: 15.5rem;
+		padding: 0.7rem 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		box-shadow: 0 12px 32px -18px rgba(20, 24, 40, 0.45);
+	}
+
+	.live-form {
+		display: flex;
+		gap: 0.35rem;
+		align-items: center;
+	}
+
+	.live-start {
+		padding: 0.32rem 0.55rem;
+		font-size: 0.72rem;
 	}
 
 	.live-btn .dot {
@@ -1009,9 +1105,158 @@
 		}
 	}
 
+	.back-short {
+		display: none;
+	}
+
 	@media (max-width: 820px) {
+		.shell {
+			padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
+				max(0.85rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+			gap: 0.7rem;
+		}
+
+		.topbar {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 0.6rem;
+		}
+
+		h1 {
+			font-size: 1.4rem;
+		}
+
+		.eyebrow {
+			font-size: 0.64rem;
+			margin-bottom: 0.15rem;
+		}
+
+		.actions {
+			margin-left: 0;
+			flex-wrap: wrap;
+			gap: 0.4rem;
+		}
+
+		.btn {
+			min-height: 2.5rem;
+			padding: 0.45rem 0.7rem;
+			font-size: 0.82rem;
+		}
+
+		.back-long {
+			display: none;
+		}
+
+		.back-short {
+			display: inline;
+		}
+
+		.reset-menu > summary {
+			min-height: 2.5rem;
+			min-width: 2.5rem;
+			display: grid;
+			place-items: center;
+			font-size: 0.85rem;
+		}
+
+		.input {
+			font-size: 16px;
+			width: 100%;
+			padding: 0.45rem 0.55rem;
+		}
+
+		.live-panel,
+		.reset-panel {
+			width: min(18rem, calc(100vw - 1.5rem));
+		}
+
+		.live-form,
+		.reset-form {
+			width: 100%;
+		}
+
+		.feed {
+			min-height: 0;
+			flex-wrap: wrap;
+			overflow: visible;
+		}
+
+		.feed:empty {
+			display: none;
+		}
+
+		.totals {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 0.4rem;
+		}
+
+		.kpi {
+			padding: 0.45rem 0.55rem;
+		}
+
+		.k {
+			font-size: 0.58rem;
+			letter-spacing: 0.06em;
+		}
+
+		.v {
+			margin-top: 0.05rem;
+			font-size: 1.25rem;
+		}
+
+		.sub {
+			display: none;
+		}
+
 		.boards {
 			grid-template-columns: 1fr;
+			gap: 0.7rem;
+		}
+
+		.board {
+			padding: 0.8rem;
+			overflow-x: auto;
+		}
+
+		.board-head,
+		.board summary {
+			gap: 0.35rem;
+			margin-bottom: 0.55rem;
+			min-height: 2.4rem;
+			align-items: center;
+		}
+
+		.chips {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 0.3rem;
+			margin-bottom: 0.6rem;
+		}
+
+		.chip {
+			padding: 0.28rem 0.35rem;
+			font-size: 0.8rem;
+			border-radius: 8px;
+		}
+
+		.chip .k {
+			font-size: 0.55rem;
+		}
+
+		table {
+			font-size: 0.78rem;
+		}
+
+		th,
+		td {
+			padding: 0.38rem 0.28rem;
+		}
+
+		.rank {
+			width: 2.6rem;
+		}
+
+		.player {
+			max-width: 7.5rem;
 		}
 	}
 </style>
