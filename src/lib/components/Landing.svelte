@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import DifficultyPicker from './DifficultyPicker.svelte';
 	import { ADMIN_KEYWORD, isAdminName } from '$lib/leaderboard';
 	import { TOTAL_FLOOR_CELLS } from '$lib/maze';
@@ -13,8 +14,11 @@
 	let { difficulty = $bindable(), configured, onenter }: Props = $props();
 
 	let name = $state('');
+	let nameInput: HTMLInputElement | undefined = $state();
 	let adminDetected = $derived(isAdminName(name));
 	let ready = $derived(name.trim().length > 0);
+
+	onMount(() => nameInput?.focus());
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -39,11 +43,13 @@
 			<input
 				class="input"
 				type="text"
+				bind:this={nameInput}
 				bind:value={name}
 				placeholder="e.g. Ada"
 				maxlength="32"
 				autocomplete="off"
 				spellcheck="false"
+				autofocus
 			/>
 		</label>
 

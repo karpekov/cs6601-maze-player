@@ -717,7 +717,7 @@
 	}
 
 	.kpi.bump .v {
-		animation: kpi-pop 0.55s ease;
+		animation: kpi-pop 0.45s ease;
 	}
 
 	.k {
@@ -853,9 +853,8 @@
 	}
 
 	@keyframes kpi-pop {
-		50% {
-			transform: scale(1.12);
-			color: var(--violet);
+		40% {
+			transform: scale(1.02);
 		}
 	}
 
